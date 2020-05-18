@@ -13,6 +13,12 @@ exit_abnormal(){
     exit 1
 }
 
+#Check for args
+if [[ ! $@ =~ ^\-.+ ]]
+then
+    exit_abnormal
+fi
+
 while getopts ":c:d:h" options; do
     case "${options}" in
         h) usage; exit 0;;        
@@ -20,9 +26,11 @@ while getopts ":c:d:h" options; do
         d) DIRECTORY=${OPTARG};
            [[ -d $DIRECTORY ]] || mkdir $DIRECTORY;
            cd $DIRECTORY;;
+        \? )
+           exit_abnormal;;
         :)
-            echo "Error: -${OPTARG} requires an argument."
-            exit_abnormal            
+            echo "Error: -${OPTARG} requires an argument or invalid option."
+            exit_abnormal
     esac
 done
 
