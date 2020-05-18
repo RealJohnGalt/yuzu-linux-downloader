@@ -66,8 +66,7 @@ fi
 
 echo "Preparing to install (this may take a moment)." 
 cd $FILE
-## find . -type f -exec dos2unix {} \;
-find -type f -exec sed -i 's/\r$//' {} ';'
+find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
 echo "Patching windows build to work with linux."
 wget http://ix.io/2mBY && patch -p1 < 2mBY
