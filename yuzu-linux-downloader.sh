@@ -80,7 +80,7 @@ else
     mkdir build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 fi
-PATH="/usr/lib/ccache/bin/:$PATH" make -j$(nproc)
+PATH="/usr/lib/ccache/bin/:$PATH" make -j$(($(nproc) -1))
 bindir="$(pwd -L)/bin"
 
 echo "Your build should be in $bindir"
