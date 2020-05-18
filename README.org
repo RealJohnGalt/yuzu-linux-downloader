@@ -17,7 +17,9 @@ chmod +x ./yuzu-early-access.sh
 ./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] LOGIN_TOKEN
 #+END_SRC
 
-An additional flag of -g exists for building for debugging.
+Two additional flags exist that don't take arguments:
+-g for an apitrace compatible build with debug symbols enabled.
+-o to enable experimental optimizations that may cause regressions. NOT RECOMMENDED. If used, be sure to test without -o before reporting bugs upstream.
 
 - Get your =LOGIN_TOKEN= from https://profile.yuzu-emu.org/
 

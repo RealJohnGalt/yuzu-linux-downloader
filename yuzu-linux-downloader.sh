@@ -13,7 +13,7 @@ exit_abnormal(){
     exit 1
 }
 
-while getopts ":c:d:h:g" options; do
+while getopts ":c:d:h:g:o" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
@@ -21,6 +21,7 @@ while getopts ":c:d:h:g" options; do
            [[ -d $DIRECTORY ]] || mkdir $DIRECTORY;
            cd $DIRECTORY;;
         g) debug=1;;
+        o) opts=1;;
         :)
             echo "Error: -${OPTARG} requires an argument or invalid option."
             exit_abnormal
@@ -71,6 +72,10 @@ find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
 echo "Patching windows build to work with linux."
 wget http://ix.io/2mBY && patch -p1 < 2mBY
+if [[ "$opts" == "1" ]]; then
+    echo "Patching for additional optimizations"
+    wget http://ix.io/2mD1 && patch -p1 < 2mD1
+fi
 if [[ "$debug" == "" ]]; then
     mkdir build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=Release
