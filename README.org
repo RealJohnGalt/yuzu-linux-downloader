@@ -17,6 +17,8 @@ chmod +x ./yuzu-early-access.sh
 ./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] LOGIN_TOKEN
 #+END_SRC
 
+An additional flag of -g exists for building for debugging.
+
 - Get your =LOGIN_TOKEN= from https://profile.yuzu-emu.org/
 
 Currently the only =CHANNEL= is =earlyaccess=, others can be added in the future. I just don't know their api endpoints.
@@ -38,4 +40,3 @@ curl --silent "https://api.github.com/repos/yuzu-emu/yuzu-mainline/releases/late
 | awk -F ": " '{print $2}' \
 | sed 's/\"//g'\
 #+END_SRC
-

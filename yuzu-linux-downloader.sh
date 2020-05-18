@@ -13,21 +13,14 @@ exit_abnormal(){
     exit 1
 }
 
-#Check for args
-if [[ ! $@ =~ ^\-.+ ]]
-then
-    exit_abnormal
-fi
-
-while getopts ":c:d:h" options; do
+while getopts ":c:d:h:g" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
         d) DIRECTORY=${OPTARG};
            [[ -d $DIRECTORY ]] || mkdir $DIRECTORY;
            cd $DIRECTORY;;
-        \? )
-           exit_abnormal;;
+        g) debug=1;;
         :)
             echo "Error: -${OPTARG} requires an argument or invalid option."
             exit_abnormal
@@ -63,21 +56,28 @@ if ! [ -f $TAR_FILE ]; then
 fi
 
 
-echo "Unziping Yuzu source."
+echo "Unzipping Yuzu source."
 [[ -d $FILE ]] && rm -rf $FILE # make sure previous files are removed
 tar -xf $TAR_FILE
     
 if [ -f $FILE ]; then
-    echo "Error: Failed to unizp $TAR_FILE."
+    echo "Error: Failed to unzip $TAR_FILE."
     exit_abnormal
 fi
 
-echo "Preparing to install (this may take a moment)." 
+echo "Preparing to build and install (this may take a moment)." 
 cd $FILE
 find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
 echo "Patching windows build to work with linux."
 wget http://ix.io/2mBY && patch -p1 < 2mBY
-mkdir build && cd build
-cmake .. -GNinja
-ninja
+if [[ "$debug" == "" ]]; then
+    mkdir build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+else
+    echo "Patching build to support apitrace"
+    wget http://ix.io/2mhx && patch -p1 < 2mhx
+    mkdir build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
+fi
+PATH="/usr/lib/ccache/bin/:$PATH" make -j$(nproc)
