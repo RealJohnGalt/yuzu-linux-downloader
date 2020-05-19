@@ -7,12 +7,16 @@ This script removes the requirement of using the installer. It downloads the win
 Note, in order to access the =earlyaccess= branch follow the instructions on https://yuzu-emu.org/help/early-access/
 
 ** Usage
-Before running the script make sure it has permission to execute.
+You may get your login token from https://profile.yuzu-emu.org
+.For most users, usage will be like the following:
 
 #+BEGIN_SRC: bash
-chmod +x ./yuzu-early-access.sh
+wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/yuzu-linux-downloader.sh
+chmod +x ./yuzu-linux-downloader.sh
+./yuzu-linux-downloader.sh LOGIN_TOKEN
 #+END_SRC
 
+Full arguments:
 #+BEGIN_SRC: bash
 ./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] LOGIN_TOKEN
 #+END_SRC
