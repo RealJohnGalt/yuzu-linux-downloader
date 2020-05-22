@@ -13,7 +13,7 @@ exit_abnormal(){
     exit 1
 }
 
-while getopts ":c:d:h:g:o" options; do
+while getopts ":c:d:hgof" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
