@@ -14,7 +14,7 @@ exit_abnormal(){
 }
 
 # Check installed software
-declare -a reqsw=("curl" "wget" "conan" "g++" "cmake" "python2")
+declare -a reqsw=("curl" "wget" "conan" "g++" "cmake" "python2" "tar" "patch")
 for i in "${reqsw[@]}"
 do
     if ! [ -x "$(command -v $i)" ]; then
