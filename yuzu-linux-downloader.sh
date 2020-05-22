@@ -13,6 +13,21 @@ exit_abnormal(){
     exit 1
 }
 
+# Check installed software
+declare -a reqsw=("curl" "wget" "conan" "g++" "cmake" "python2")
+for i in "${reqsw[@]}"
+do
+    if ! [ -x "$(command -v $i)" ]; then
+        echo "You must install $i"
+        exit 1
+    fi
+done
+
+if [ -x qmake ]; then
+    echo "You must install QT (possibly dev package)"
+    exit 1
+fi
+
 while getopts ":c:d:hgof" options; do
     case "${options}" in
         h) usage; exit 0;;        
