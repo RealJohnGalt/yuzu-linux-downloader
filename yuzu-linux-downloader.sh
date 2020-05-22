@@ -46,14 +46,19 @@ done
 shift $((OPTIND - 1)) # sets the final argument to $1
 PROFILE=$1
 if [ "$PROFILE" == "" ] ;then
-    echo "Error: Missing LOGIN_TOKEN"
-    exit_abnormal
+    echo "Please enter your EA login token:"
+    read token
+    if ! [ "$token" == "" ]; then
+        PROFILE=$token
+    else
+        exit_abnormal
+    fi
 fi
     
 NAME_TOKEN=$(echo "$PROFILE=" | base64 -d)
 NAME=$(echo $NAME_TOKEN | awk -F ":" '{print $1}')
 TOKEN=$(echo $NAME_TOKEN | awk -F ":" '{print $2}')
-if [ "$CHANNEL" == "" ] ;then    
+if [ "$CHANNEL" == "" ]; then
     CHANNEL="earlyaccess"
 fi
 
