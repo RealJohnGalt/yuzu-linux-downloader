@@ -1,0 +1,18 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 3a57356ab..d7ffae076 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -60,8 +60,13 @@ else()
+         -Wmissing-declarations
+         -Wno-attributes
+         -Wno-unused-parameter
++        -mcx16
++        -lboost_context
++        -lfmt
+     )
+ 
++    link_libraries("-lboost_context -lfmt")
++
+     if (APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+         add_compile_options("-stdlib=libc++")
+     endif()

@@ -86,17 +86,17 @@ cd $FILE
 find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
 echo "Patching windows build to work with linux."
-wget http://ix.io/2mBY && patch -p1 < 2mBY
+wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
 if [[ "$opts" == "1" ]]; then
     echo "Patching for additional optimizations"
-    wget http://ix.io/2mD1 && patch -p1 < 2mD1
+    wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/rice.patch && patch -p1 < rice.patch
 fi
 if [[ "$debug" == "" ]]; then
     mkdir build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=Release
 else
     echo "Patching build to support apitrace"
-    wget http://ix.io/2mhx && patch -p1 < 2mhx
+    wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/disablecoherent.patch && patch -p1 < disablecoherent.patch
     mkdir build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 fi
