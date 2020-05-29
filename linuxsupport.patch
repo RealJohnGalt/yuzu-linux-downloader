@@ -6,7 +6,7 @@ index 3a57356ab..d7ffae076 100644
          -Wmissing-declarations
          -Wno-attributes
          -Wno-unused-parameter
-+        -mcx16
++        -march=native
 +        -lboost_context
 +        -lfmt
      )
