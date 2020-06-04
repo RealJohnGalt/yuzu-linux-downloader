@@ -7,18 +7,18 @@ This script removes the requirement of using the installer. It downloads the win
 Note, in order to access the =earlyaccess= branch follow the instructions on https://yuzu-emu.org/help/early-access/
 
 ** Usage
-You may get your login token from https://profile.yuzu-emu.org
-.For most users, usage will be like the following:
+For building EA, you may get your login token from https://profile.yuzu-emu.org
+For many users, the simplest usage will be like the following:
 
 #+BEGIN_SRC: bash
 wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/yuzu-linux-downloader.sh
 chmod +x ./yuzu-linux-downloader.sh
-./yuzu-linux-downloader.sh LOGIN_TOKEN
+./yuzu-linux-downloader.sh
 #+END_SRC
 
 Full arguments:
 #+BEGIN_SRC: bash
-./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] LOGIN_TOKEN
+./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] [-g] [-o] [LOGIN_TOKEN]
 #+END_SRC
 
 Two additional flags exist that don't take arguments:
@@ -27,22 +27,12 @@ Two additional flags exist that don't take arguments:
 
 - Get your =LOGIN_TOKEN= from https://profile.yuzu-emu.org/
 
-Currently the only =CHANNEL= is =earlyaccess=, others can be added in the future. I just don't know their api endpoints.
+=CHANNEL= can be =earlyaccess= or =mainline=
 
 =DIRECTORY= is where the yuzu program will be downloaded and compiled. It Defaults to pwd.
 
 Once installed yuzu can be run via =./$DIRECTORY/$BUILDNAME/build/bin/yuzu=. =BUILDNAME= is dictated by https://api.yuzu-emu.org/
 
 ** Future Development
-- Implement the mainline and canary channels
 - Ask user if they want to download if the file already exists
 - Modify to allow for easy automation (check for update every 24 hours and build)
-
-The following can be used to get the latest release browser download for main line.
-#+BEGIN_SRC: bash
-curl --silent "https://api.github.com/repos/yuzu-emu/yuzu-mainline/releases/latest" \
-|grep "linux-.*xz" \
-| tail -1 \
-| awk -F ": " '{print $2}' \
-| sed 's/\"//g'\
-#+END_SRC
