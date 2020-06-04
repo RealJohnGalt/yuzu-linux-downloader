@@ -2,10 +2,10 @@
 
 CHANNEL=""
 
-CHANNELS="earlyaccess" #"earlyaccess|canary|mainline" can't find the others
+CHANNELS="earlyaccess|mainline"
 
 usage(){
-echo -e "Usage: $0 [-c CHANNEL ] [-d DIRECTORY] LOGIN_TOKEN\\n\\nGet your login token from https://profile.yuzu-emu.org/\\n\\nCHANNEL(s):$CHANNELS\\n\\nDIRECTORY: Where the yuzu program will be downloaded and compiled. Defaults to pwd \\n\\nOnce installed yuzu can be run via \$DIRECTORY/\$BUILDNAME/build/bin/yuzu\\n\\nBefore running the script you have to give it permission to execute\\nchmod +x ./yuzu-early-access.sh"
+echo -e "Usage: $0 [-c CHANNEL ] [-d DIRECTORY] [LOGIN_TOKEN]\\n\\nFor building Early Access, get your login token from https://profile.yuzu-emu.org/\\n\\nCHANNEL(s):$CHANNELS\\n\\nDIRECTORY: Where the yuzu program will be downloaded and compiled. Defaults to pwd \\n\\nOnce installed yuzu can be run via \$DIRECTORY/\$BUILDNAME/build/bin/yuzu\\n\\nBefore running the script you have to give it permission to execute\\nchmod +x ./yuzu-early-access.sh"
 }
 
 exit_abnormal(){
@@ -43,39 +43,65 @@ while getopts ":c:d:hgof" options; do
     esac
 done
 
-shift $((OPTIND - 1)) # sets the final argument to $1
-PROFILE=$1
-if [ "$PROFILE" == "" ] ;then
-    echo "Please enter your EA login token:"
-    read token
-    if ! [ "$token" == "" ]; then
-        PROFILE=$token
+if [ "$CHANNEL" == "" ]; then
+    echo -e "Please select your Channel\nNote: to avoid this in the future, specify your channel with -c"
+    echo -e "1. mainline\n2. earlyaccess"
+    read chan
+
+    if [ "$chan" == "earlyaccess" ] || [ "$chan" == "mainline" ] || [ "$chan" == "1" ] || [ "$chan" == "2" ]; then
+        case "$chan" in
+        "earlyaccess" | "mainline")
+            CHANNEL=$chan;;
+        "1")
+            CHANNEL="mainline";;
+        "2")
+            CHANNEL="earlyaccess";;
+        esac
     else
         exit_abnormal
     fi
 fi
 
-NAME_TOKEN=$(echo "$PROFILE" | base64 -d)
-NAME=$(echo $NAME_TOKEN | awk -F ":" '{print $1}')
-TOKEN=$(echo $NAME_TOKEN | awk -F ":" '{print $2}')
-if [ "$CHANNEL" == "" ]; then
-    CHANNEL="earlyaccess"
+if [ "$CHANNEL" == "earlyaccess" ]; then
+    shift $((OPTIND - 1)) # sets the final argument to $1
+    PROFILE=$1
+    if [ "$PROFILE" == "" ] ;then
+        echo "Please enter your EA login token:"
+        read token
+        if ! [ "$token" == "" ]; then
+            PROFILE=$token
+        else
+            exit_abnormal
+        fi
+    fi
+
+    NAME_TOKEN=$(echo "$PROFILE" | base64 -d)
+    NAME=$(echo $NAME_TOKEN | awk -F ":" '{print $1}')
+    TOKEN=$(echo $NAME_TOKEN | awk -F ":" '{print $2}')
+
+    echo "Preparing to download channel:$CHANNEL"
+    BEARER_TOKEN=$(curl -s -X POST -H "X-USERNAME: $NAME" -H "X-TOKEN: $TOKEN" https://api.yuzu-emu.org/jwt/installer/)
+    URL=$(curl -s https://api.yuzu-emu.org/downloads/$CHANNEL | grep -A 0 "yuzu-windows-msvc-source" | tail -1 | awk -F ": " '{print $2}' | sed 's/\"//g')
+    TAR_FILE=$(basename $URL)
+    FILE=$(echo $TAR_FILE | sed 's/.tar.xz//g')
+
+
+    echo "Downloading Yuzu source."
+    curl -X GET -H "Authorization: Bearer $BEARER_TOKEN" $URL > $TAR_FILE
+    if ! [ -f $TAR_FILE ]; then
+        echo "Error: Failed to download $URL."
+        exit_abnormal
+    fi
+
+elif [ "$CHANNEL" == "mainline" ]; then
+    URL=$(curl --silent "https://api.github.com/repos/yuzu-emu/yuzu-mainline/releases/latest" \
+    | grep "yuzu-windows-.*xz" | tail -1 | awk -F ": " '{print $2}' | sed 's/\"//g')
+    TAR_FILE=$(basename $URL)
+    FILE=$(echo $TAR_FILE | sed 's/.tar.xz//g')
+
+    echo "Downloading Yuzu source."
+    wget $URL
 fi
-
-echo "Preparing to download channel:$CHANNEL"
-BEARER_TOKEN=$(curl -s -X POST -H "X-USERNAME: $NAME" -H "X-TOKEN: $TOKEN" https://api.yuzu-emu.org/jwt/installer/)
-URL=$(curl -s https://api.yuzu-emu.org/downloads/$CHANNEL | grep -A 0 "yuzu-windows-msvc-source" | tail -1 | awk -F ": " '{print $2}' | sed 's/\"//g')
-TAR_FILE=$(basename $URL)
-FILE=$(echo $TAR_FILE | sed 's/.tar.xz//g')
-
-
-echo "Downloading Yuzu source."
-curl -X GET -H "Authorization: Bearer $BEARER_TOKEN" $URL > $TAR_FILE
-if ! [ -f $TAR_FILE ]; then
-    echo "Error: Failed to download $URL."
-    exit_abnormal
-fi
-
 
 echo "Unzipping Yuzu source."
 [[ -d $FILE ]] && rm -rf $FILE # make sure previous files are removed
