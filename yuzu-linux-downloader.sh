@@ -54,8 +54,8 @@ if [ "$PROFILE" == "" ] ;then
         exit_abnormal
     fi
 fi
-    
-NAME_TOKEN=$(echo "$PROFILE=" | base64 -d)
+
+NAME_TOKEN=$(echo "$PROFILE" | base64 -d)
 NAME=$(echo $NAME_TOKEN | awk -F ":" '{print $1}')
 TOKEN=$(echo $NAME_TOKEN | awk -F ":" '{print $2}')
 if [ "$CHANNEL" == "" ]; then
