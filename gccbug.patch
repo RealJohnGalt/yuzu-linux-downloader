@@ -1,0 +1,15 @@
+diff --git a/src/video_core/macro/macro_jit_x64.h b/src/video_core/macro/macro_jit_x64.h
+index 21ee157cf..71f738b9a 100755
+--- a/src/video_core/macro/macro_jit_x64.h
++++ b/src/video_core/macro/macro_jit_x64.h
+@@ -85,8 +85,8 @@ private:
+     std::optional<Macro::Opcode> next_opcode{};
+     ProgramType program{nullptr};
+ 
+-    std::array<Xbyak::Label, MAX_CODE_SIZE> labels{};
+-    std::array<Xbyak::Label, MAX_CODE_SIZE> delay_skip{};
++    std::array<Xbyak::Label, MAX_CODE_SIZE> labels;
++    std::array<Xbyak::Label, MAX_CODE_SIZE> delay_skip;
+     Xbyak::Label end_of_code{};
+ 
+     bool is_delay_slot{};
