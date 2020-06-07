@@ -6,7 +6,8 @@ index d7ffae076..a95185d9e 100644
          -Wmissing-declarations
          -Wno-attributes
          -Wno-unused-parameter
-         -march=native
+-        -mcx16
++        -march=native
 +        -Ofast
 +        -fuse-linker-plugin
 +        -flto
