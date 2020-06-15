@@ -28,7 +28,7 @@ if [ -x qmake ]; then
     exit 1
 fi
 
-while getopts ":c:d:hgof" options; do
+while getopts ":c:d:hgolf" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
@@ -37,6 +37,7 @@ while getopts ":c:d:hgof" options; do
            cd $DIRECTORY;;
         g) debug=1;;
         o) opts=1;;
+        l) clangbuild=1;;
         :)
             echo "Error: -${OPTARG} requires an argument or invalid option."
             exit_abnormal
@@ -119,8 +120,20 @@ find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 echo "Patching windows build to work with linux."
 wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
 if [[ "$opts" == "1" ]]; then
-    echo "Patching for additional optimizations"
-    wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/rice.patch && patch -p1 < rice.patch
+    if [[ "$clangbuild" == "1" ]]; then
+        echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has polly and lld."
+        export CC="clang"
+        export CXX="clang++"
+        export CFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
+        export CXXFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
+       export LDFLAGS="-fuse-ld=lld -Wl,--as-needed,-O1,--sort-common,-z,now,-z,relro"
+    else
+        echo "Patching for additional optimizations"
+        wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/rice.patch && patch -p1 < rice.patch
+    fi
+elif [[ "$clangbuild" == "1" ]]; then
+    export CC="clang"
+    export CXX="clang++"
 fi
 if [[ "$debug" == "" ]]; then
     mkdir build && cd build
