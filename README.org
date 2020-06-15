@@ -21,10 +21,11 @@ Full arguments:
 ./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] [-g] [-o] [LOGIN_TOKEN]
 #+END_SRC
 
-Two additional flags exist that don't take arguments:
+Additional flags exist that don't take arguments:
 -g for an apitrace compatible build with debug symbols enabled.
 -o to enable experimental optimizations that may cause regressions. If used, be sure to test without -o before reporting bugs upstream.
 -l to use llvm tools with clang to build. Paired with -o, it will utilize lld, ThinLTO, and Polly optimizations. If used, be sure to test without -l before reporting bugs upstream.
+-w for building with qt webengine support. You must have proper dependencies installed, even then build may fail for some configurations.
 
 - Get your =LOGIN_TOKEN= from https://profile.yuzu-emu.org/
 

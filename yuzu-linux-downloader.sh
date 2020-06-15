@@ -38,6 +38,7 @@ while getopts ":c:d:hgolf" options; do
         g) debug=1;;
         o) opts=1;;
         l) clangbuild=1;;
+        w) webengine=1;;
         :)
             echo "Error: -${OPTARG} requires an argument or invalid option."
             exit_abnormal
@@ -137,7 +138,12 @@ elif [[ "$clangbuild" == "1" ]]; then
 fi
 if [[ "$debug" == "" ]]; then
     mkdir build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release
+
+    if [[ "$webengine" == 1 ]]; then
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DYUZU_USE_QT_WEB_ENGINE=ON
+    else
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+    fi
 else
     echo "Patching build to support apitrace"
     wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/disablecoherent.patch && patch -p1 < disablecoherent.patch
