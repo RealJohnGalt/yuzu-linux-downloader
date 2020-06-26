@@ -6,7 +6,7 @@ index d4c5c22..dcaa7f8 100755
  endif()
  
  create_target_directory_groups(common)
-+find_package(Boost 1.72 COMPONENTS context headers REQUIRED)
++find_package(Boost 1.71 COMPONENTS context headers REQUIRED)
  
 -target_link_libraries(common PUBLIC Boost::boost fmt::fmt microprofile)
 +target_link_libraries(common PUBLIC ${Boost_LIBRARIES} fmt microprofile)
