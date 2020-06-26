@@ -11,3 +11,16 @@ index d4c5c22..7f196a8 100755
 +set(Boost_ADDITIONAL_VERSIONS "1.71" "1.71.0")
 +target_link_libraries(common PUBLIC ${Boost_LIBRARIES} fmt microprofile)
  target_link_libraries(common PRIVATE lz4::lz4 zstd::zstd xbyak)
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 3a57356..7e4ffe2 100755
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -60,6 +60,7 @@ else()
+         -Wmissing-declarations
+         -Wno-attributes
+         -Wno-unused-parameter
++        -mcx16
+     )
+ 
+     if (APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL Clang)

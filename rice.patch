@@ -1,11 +1,12 @@
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
-index 3a57356ab..53dc58e7e 100644
+index 7e4ffe2..53dc58e 100755
 --- a/src/CMakeLists.txt
 +++ b/src/CMakeLists.txt
-@@ -60,6 +60,17 @@ else()
+@@ -60,7 +60,17 @@ else()
          -Wmissing-declarations
          -Wno-attributes
          -Wno-unused-parameter
+-        -mcx16
 +        -march=native
 +        -Ofast
 +        -fuse-linker-plugin
