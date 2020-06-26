@@ -1,13 +1,13 @@
 diff --git a/src/common/CMakeLists.txt b/src/common/CMakeLists.txt
-index a0d2c8de8..9f9c840b6 100644
+index d4c5c22..dcaa7f8 100755
 --- a/src/common/CMakeLists.txt
 +++ b/src/common/CMakeLists.txt
-@@ -187,6 +187,7 @@ if(ARCHITECTURE_x86_64)
+@@ -189,6 +189,7 @@ if(ARCHITECTURE_x86_64)
  endif()
  
  create_target_directory_groups(common)
 +find_package(Boost 1.72 COMPONENTS context headers REQUIRED)
  
--target_link_libraries(common PUBLIC Boost::headers Boost::context fmt::fmt microprofile)
+-target_link_libraries(common PUBLIC Boost::boost fmt::fmt microprofile)
 +target_link_libraries(common PUBLIC ${Boost_LIBRARIES} fmt microprofile)
  target_link_libraries(common PRIVATE lz4::lz4 zstd::zstd xbyak)
