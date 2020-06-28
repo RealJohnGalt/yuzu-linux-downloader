@@ -119,8 +119,10 @@ echo "Preparing to build and install (this may take a moment)."
 cd $FILE
 find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
-echo "Patching windows build to work with linux."
-wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
+if [ "$CHANNEL" == "earlyaccess" ]; then
+    echo "Patching Windows source to work with linux."
+    wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
+fi
 if [[ "$opts" == "1" ]]; then
     if [[ "$clangbuild" == "1" ]]; then
         echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has polly and lld."
@@ -137,20 +139,18 @@ elif [[ "$clangbuild" == "1" ]]; then
     export CC="clang"
     export CXX="clang++"
 fi
-if [[ "$debug" == "" ]]; then
-    mkdir build && cd build
 
+mkdir build && cd build
+if [[ "$debug" == "" ]]; then
     if [[ "$webengine" == 1 ]]; then
         cmake .. -DCMAKE_BUILD_TYPE=Release -DYUZU_USE_QT_WEB_ENGINE=ON
     else
         cmake .. -DCMAKE_BUILD_TYPE=Release
     fi
 else
-    echo "Patching build to support apitrace"
-    wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/disablecoherent.patch && patch -p1 < disablecoherent.patch
-    mkdir build && cd build
     cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 fi
+
 PATH="/usr/lib/ccache/bin/:$PATH" make -j$(($(nproc) -1))
 bindir="$(pwd -L)/bin"
 
