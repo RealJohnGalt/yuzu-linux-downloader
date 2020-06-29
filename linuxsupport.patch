@@ -1,26 +1,11 @@
 diff --git a/src/common/CMakeLists.txt b/src/common/CMakeLists.txt
-index d4c5c22..dcaa7f8 100755
+index d120c8d..1808f7e 100755
 --- a/src/common/CMakeLists.txt
 +++ b/src/common/CMakeLists.txt
-@@ -189,6 +189,7 @@ if(ARCHITECTURE_x86_64)
- endif()
- 
+@@ -191,5 +191,5 @@ endif()
  create_target_directory_groups(common)
-+find_package(Boost 1.71 COMPONENTS context headers REQUIRED)
+ find_package(Boost 1.71 COMPONENTS context headers REQUIRED)
  
--target_link_libraries(common PUBLIC Boost::boost fmt::fmt microprofile)
+-target_link_libraries(common PUBLIC ${Boost_LIBRARIES} fmt::fmt microprofile)
 +target_link_libraries(common PUBLIC ${Boost_LIBRARIES} fmt microprofile)
  target_link_libraries(common PRIVATE lz4::lz4 zstd::zstd xbyak)
-
-diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
-index 3a57356..7e4ffe2 100755
---- a/src/CMakeLists.txt
-+++ b/src/CMakeLists.txt
-@@ -60,6 +60,7 @@ else()
-         -Wmissing-declarations
-         -Wno-attributes
-         -Wno-unused-parameter
-+        -mcx16
-     )
- 
-     if (APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL Clang)
