@@ -130,8 +130,9 @@ if [[ "$opts" == "1" ]]; then
         export CXXFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
        export LDFLAGS="-fuse-ld=lld -Wl,--as-needed,-O1,--sort-common,-z,now,-z,relro"
     else
-        echo "Patching for additional optimizations"
-        wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/rice.patch && patch -p1 < rice.patch
+        echo "Preparing for optimized gcc build."
+        export CFLAGS="-march=native -O3 -fuse-linker-plugin -flto"
+        export CXXFLAGS="-march=native -O3 -fuse-linker-plugin -flto"
     fi
 elif [[ "$clangbuild" == "1" ]]; then
     export CC="clang"
