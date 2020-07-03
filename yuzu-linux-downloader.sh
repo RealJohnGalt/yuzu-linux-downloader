@@ -118,9 +118,6 @@ echo "Preparing to build and install (this may take a moment)."
 cd $FILE
 find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
-echo "Patching Windows source to work with linux."
-wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
-
 if [[ "$opts" == "1" ]]; then
     if [[ "$clangbuild" == "1" ]]; then
         echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has polly and lld."
