@@ -13,6 +13,8 @@ exit_abnormal(){
     exit 1
 }
 
+export PATH="/usr/lib/ccache/bin/:$HOME/.local/bin/:$PATH"
+
 # Check installed software
 declare -a reqsw=("curl" "wget" "conan" "g++" "cmake" "python2" "tar" "patch")
 for i in "${reqsw[@]}"
@@ -150,7 +152,7 @@ else
     cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
 fi
 
-PATH="/usr/lib/ccache/bin/:$PATH" make -j$(($(nproc) -1))
+make -j$(($(nproc) -1))
 bindir="$(pwd -L)/bin"
 
 echo "Your build should be in $bindir"
