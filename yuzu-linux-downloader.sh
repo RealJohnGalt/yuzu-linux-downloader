@@ -30,7 +30,7 @@ if [ -x qmake ]; then
     exit 1
 fi
 
-while getopts ":c:d:hgolf" options; do
+while getopts ":c:d:hgolfs" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
@@ -41,6 +41,7 @@ while getopts ":c:d:hgolf" options; do
         o) opts=1;;
         l) clangbuild=1;;
         w) webengine=1;;
+        s) symlinkbuild=1;;
         :)
             echo "Error: -${OPTARG} requires an argument or invalid option."
             exit_abnormal
@@ -154,5 +155,12 @@ fi
 
 make -j$(($(nproc) -1))
 bindir="$(pwd -L)/bin"
+
+if [[ "$symlinkbuild" == "1" ]]; then
+    cd ../..
+    symdir="$(pwd -L)/$CHANNEL"
+    echo "Symlinking binaries to build target. Latest binaries should be in $symdir"
+    ln -s "$bindir" "$symdir"
+fi
 
 echo "Your build should be in $bindir"
