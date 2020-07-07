@@ -18,7 +18,7 @@ chmod +x ./yuzu-linux-downloader.sh
 
 Full arguments:
 #+BEGIN_SRC: bash
-./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] [-g] [-o] [LOGIN_TOKEN]
+./yuzu-linux-downloader.sh [-c CHANNEL ] [-d DIRECTORY] [-i INSTALLDIR] [-g] [-o] [-l] [-w] [LOGIN_TOKEN]
 #+END_SRC
 
 Additional flags exist that don't take arguments:
@@ -33,7 +33,9 @@ Additional flags exist that don't take arguments:
 
 =DIRECTORY= is where the yuzu program will be downloaded and compiled. It Defaults to pwd.
 
-Once installed yuzu can be run via =./$DIRECTORY/$BUILDNAME/build/bin/yuzu=. =BUILDNAME= is dictated by https://api.yuzu-emu.org/
+=INSTALLDIR= is where yuzu will be copied. Must have write privileges. Defaults to $HOME/.yuzubin.
+
+=BUILDNAME= is dictated by https://api.yuzu-emu.org/
 
 ** Future Development
 - Ask user if they want to download if the file already exists

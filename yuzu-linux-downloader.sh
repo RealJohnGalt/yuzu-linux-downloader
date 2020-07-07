@@ -5,7 +5,7 @@ CHANNEL=""
 CHANNELS="earlyaccess|mainline"
 
 usage(){
-echo -e "Usage: $0 [-c CHANNEL ] [-d DIRECTORY] [LOGIN_TOKEN]\\n\\nFor building Early Access, get your login token from https://profile.yuzu-emu.org/\\n\\nCHANNEL(s):$CHANNELS\\n\\nDIRECTORY: Where the yuzu program will be downloaded and compiled. Defaults to pwd \\n\\nOnce installed yuzu can be run via \$DIRECTORY/\$BUILDNAME/build/bin/yuzu\\n\\nBefore running the script you have to give it permission to execute\\nchmod +x ./yuzu-early-access.sh"
+echo -e "Usage: $0 [-c CHANNEL ] [-d DIRECTORY] [LOGIN_TOKEN]\\n\\nFor building Early Access, get your login token from https://profile.yuzu-emu.org/\\n\\nCHANNEL(s):$CHANNELS\\n\\nDIRECTORY: Where the yuzu program will be downloaded and compiled. Defaults to pwd\\n\\nBefore running the script you have to give it permission to execute\\nchmod +x ./yuzu-early-access.sh"
 }
 
 exit_abnormal(){
@@ -30,13 +30,14 @@ if [ -x qmake ]; then
     exit 1
 fi
 
-while getopts ":c:d:hgolf" options; do
+while getopts ":c:d:i:hgolf" options; do
     case "${options}" in
         h) usage; exit 0;;        
         c) CHANNEL=${OPTARG};;
         d) DIRECTORY=${OPTARG};
            [[ -d $DIRECTORY ]] || mkdir $DIRECTORY;
            cd $DIRECTORY;;
+        i) instdir=$OPTARG;;
         g) debug=1;;
         o) opts=1;;
         l) clangbuild=1;;
@@ -153,6 +154,17 @@ else
 fi
 
 make -j$(($(nproc) -1))
+
 bindir="$(pwd -L)/bin"
 
-echo "Your build should be in $bindir"
+if [[ "$instdir" == "" ]]; then
+    instdir=$HOME/.yuzubin
+fi
+
+mkdir -p $instdir
+realinstdir=$(realpath $instdir)
+cp -f ./bin/* $realinstdir
+
+echo "Your build should be in $realinstdir"
+echo "To add this to your PATH, you may run the following:"
+echo "echo 'PATH=$realinstdir:\$PATH' >> ~/.profile && source ~/.profile"
