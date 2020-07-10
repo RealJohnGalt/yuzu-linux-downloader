@@ -123,6 +123,7 @@ find -type f -print0|xargs -0 -P $(nproc) -I % sed -i 's/\r$//' %
 
 echo "Patching Windows source to work with linux."
 wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/linuxsupport.patch && patch -p1 < linuxsupport.patch
+wget https://patch-diff.githubusercontent.com/raw/yuzu-emu/yuzu/pull/4280.diff && patch -p1 < 4280.diff
 
 if [[ "$opts" == "1" ]]; then
     if [[ "$clangbuild" == "1" ]]; then
