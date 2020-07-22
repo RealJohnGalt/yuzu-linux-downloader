@@ -161,6 +161,10 @@ fi
 
 make -j$(($(nproc) -1))
 
+if [[ "$debug" == "" ]]; then
+    strip bin/*
+fi
+
 bindir="$(pwd -L)/bin"
 
 if [[ "$instdir" == "" ]]; then
