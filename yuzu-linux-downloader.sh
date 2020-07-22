@@ -129,11 +129,11 @@ fi
 
 if [[ "$opts" == "1" ]]; then
     if [[ "$clangbuild" == "1" ]]; then
-        echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has lld."
+        echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has polly and lld."
         export CC="clang"
         export CXX="clang++"
-        export CFLAGS="-flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
-        export CXXFLAGS="-flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
+        export CFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
+        export CXXFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
        export LDFLAGS="-fuse-ld=lld -Wl,--as-needed,-O1,--sort-common,-z,now,-z,relro"
     else
         echo "Preparing for optimized gcc build."
