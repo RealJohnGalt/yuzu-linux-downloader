@@ -130,8 +130,6 @@ fi
 if [[ "$opts" == "1" ]]; then
     if [[ "$clangbuild" == "1" ]]; then
         echo "Preparing for optimized clang build. If there are issues, ensure your llvm installation has polly and lld."
-        export CC="clang"
-        export CXX="clang++"
         export CFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
         export CXXFLAGS="-mllvm -polly -mllvm -polly-parallel -lgomp -mllvm -polly-vectorizer=stripmine -flto=thin -fno-plt -march=native -mtune=native -O3 -pipe -Wno-unused-command-line-argument"
        export LDFLAGS="-fuse-ld=lld -Wl,--as-needed,-O1,--sort-common,-z,now,-z,relro"
@@ -140,9 +138,14 @@ if [[ "$opts" == "1" ]]; then
         export CFLAGS="-march=native -O3 -fuse-linker-plugin -flto"
         export CXXFLAGS="-march=native -O3 -fuse-linker-plugin -flto"
     fi
-elif [[ "$clangbuild" == "1" ]]; then
+fi
+
+if [[ "$clangbuild" == "1" ]]; then
     export CC="clang"
     export CXX="clang++"
+    if [ "CHANNEL" == "mainline" ]; then
+        wget https://github.com/RealJohnGalt/yuzu-linux-downloader/raw/master/clangreverts.patch && patch -p1 < clangreverts.patch
+    fi
 fi
 
 mkdir build && cd build

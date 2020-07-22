@@ -1,0 +1,1742 @@
+diff --git a/src/common/alignment.h b/src/common/alignment.h
+index ef4d6f896..b37044bb6 100644
+--- a/src/common/alignment.h
++++ b/src/common/alignment.h
+@@ -3,7 +3,7 @@
+ #pragma once
+ 
+ #include <cstddef>
+-#include <new>
++#include <memory>
+ #include <type_traits>
+ 
+ namespace Common {
+@@ -54,28 +54,66 @@ public:
+     using size_type = std::size_t;
+     using difference_type = std::ptrdiff_t;
+ 
++    using pointer = T*;
++    using const_pointer = const T*;
++
++    using reference = T&;
++    using const_reference = const T&;
++
+     using propagate_on_container_copy_assignment = std::true_type;
+     using propagate_on_container_move_assignment = std::true_type;
+     using propagate_on_container_swap = std::true_type;
+     using is_always_equal = std::true_type;
+ 
++public:
+     constexpr AlignmentAllocator() noexcept = default;
+ 
+     template <typename T2>
+     constexpr AlignmentAllocator(const AlignmentAllocator<T2, Align>&) noexcept {}
+ 
+-    T* allocate(size_type n) {
+-        return static_cast<T*>(::operator new (n * sizeof(T), std::align_val_t{Align}));
++    pointer address(reference r) noexcept {
++        return std::addressof(r);
++    }
++
++    const_pointer address(const_reference r) const noexcept {
++        return std::addressof(r);
++    }
++
++    pointer allocate(size_type n) {
++        return static_cast<pointer>(::operator new (n, std::align_val_t{Align}));
++    }
++
++    void deallocate(pointer p, size_type) {
++        ::operator delete (p, std::align_val_t{Align});
+     }
+ 
+-    void deallocate(T* p, size_type n) {
+-        ::operator delete (p, n * sizeof(T), std::align_val_t{Align});
++    void construct(pointer p, const value_type& wert) {
++        new (p) value_type(wert);
++    }
++
++    void destroy(pointer p) {
++        p->~value_type();
++    }
++
++    size_type max_size() const noexcept {
++        return size_type(-1) / sizeof(value_type);
+     }
+ 
+     template <typename T2>
+     struct rebind {
+         using other = AlignmentAllocator<T2, Align>;
+     };
++
++    bool operator!=(const AlignmentAllocator<T, Align>& other) const noexcept {
++        return !(*this == other);
++    }
++
++    // Returns true if and only if storage allocated from *this
++    // can be deallocated from other, and vice versa.
++    // Always returns true for stateless allocators.
++    bool operator==(const AlignmentAllocator<T, Align>& other) const noexcept {
++        return true;
++    }
+ };
+ 
+ } // namespace Common
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index b96ca9374..c85c9485f 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -491,7 +491,6 @@ add_library(core STATIC
+     hle/service/sm/controller.h
+     hle/service/sm/sm.cpp
+     hle/service/sm/sm.h
+-    hle/service/sockets/blocking_worker.h
+     hle/service/sockets/bsd.cpp
+     hle/service/sockets/bsd.h
+     hle/service/sockets/ethc.cpp
+@@ -502,8 +501,6 @@ add_library(core STATIC
+     hle/service/sockets/sfdnsres.h
+     hle/service/sockets/sockets.cpp
+     hle/service/sockets/sockets.h
+-    hle/service/sockets/sockets_translate.cpp
+-    hle/service/sockets/sockets_translate.h
+     hle/service/spl/csrng.cpp
+     hle/service/spl/csrng.h
+     hle/service/spl/module.cpp
+diff --git a/src/core/hle/service/nifm/nifm.cpp b/src/core/hle/service/nifm/nifm.cpp
+index 7eef35e54..d4d6f7bc6 100644
+--- a/src/core/hle/service/nifm/nifm.cpp
++++ b/src/core/hle/service/nifm/nifm.cpp
+@@ -9,7 +9,6 @@
+ #include "core/hle/kernel/writable_event.h"
+ #include "core/hle/service/nifm/nifm.h"
+ #include "core/hle/service/service.h"
+-#include "core/network/network.h"
+ #include "core/settings.h"
+ 
+ namespace Service::NIFM {
+@@ -182,16 +181,6 @@ private:
+         IPC::ResponseBuilder rb{ctx, 2};
+         rb.Push(RESULT_SUCCESS);
+     }
+-    void GetCurrentIpAddress(Kernel::HLERequestContext& ctx) {
+-        LOG_WARNING(Service_NIFM, "(STUBBED) called");
+-
+-        const auto [ipv4, error] = Network::GetHostIPv4Address();
+-        UNIMPLEMENTED_IF(error != Network::Errno::SUCCESS);
+-
+-        IPC::ResponseBuilder rb{ctx, 3};
+-        rb.Push(RESULT_SUCCESS);
+-        rb.PushRaw(ipv4);
+-    }
+     void CreateTemporaryNetworkProfile(Kernel::HLERequestContext& ctx) {
+         LOG_DEBUG(Service_NIFM, "called");
+ 
+@@ -253,7 +242,7 @@ IGeneralService::IGeneralService(Core::System& system)
+         {9, nullptr, "SetNetworkProfile"},
+         {10, &IGeneralService::RemoveNetworkProfile, "RemoveNetworkProfile"},
+         {11, nullptr, "GetScanDataOld"},
+-        {12, &IGeneralService::GetCurrentIpAddress, "GetCurrentIpAddress"},
++        {12, nullptr, "GetCurrentIpAddress"},
+         {13, nullptr, "GetCurrentAccessPointOld"},
+         {14, &IGeneralService::CreateTemporaryNetworkProfile, "CreateTemporaryNetworkProfile"},
+         {15, nullptr, "GetCurrentIpConfigInfo"},
+diff --git a/src/core/hle/service/service.cpp b/src/core/hle/service/service.cpp
+index 538f28495..fa5347af9 100644
+--- a/src/core/hle/service/service.cpp
++++ b/src/core/hle/service/service.cpp
+@@ -246,7 +246,7 @@ void Init(std::shared_ptr<SM::ServiceManager>& sm, Core::System& system) {
+     PSC::InstallInterfaces(*sm);
+     PSM::InstallInterfaces(*sm);
+     Set::InstallInterfaces(*sm);
+-    Sockets::InstallInterfaces(*sm, system);
++    Sockets::InstallInterfaces(*sm);
+     SPL::InstallInterfaces(*sm);
+     SSL::InstallInterfaces(*sm);
+     Time::InstallInterfaces(system);
+diff --git a/src/core/hle/service/sockets/blocking_worker.h b/src/core/hle/service/sockets/blocking_worker.h
+deleted file mode 100644
+index 31ef6b821..000000000
+--- a/src/core/hle/service/sockets/blocking_worker.h
++++ /dev/null
+@@ -1,162 +0,0 @@
+-// Copyright 2020 yuzu emulator team
+-// Licensed under GPLv2 or any later version
+-// Refer to the license.txt file included.
+-
+-#pragma once
+-
+-#include <atomic>
+-#include <memory>
+-#include <string>
+-#include <string_view>
+-#include <thread>
+-#include <variant>
+-#include <vector>
+-
+-#include <fmt/format.h>
+-
+-#include "common/assert.h"
+-#include "common/microprofile.h"
+-#include "common/thread.h"
+-#include "core/core.h"
+-#include "core/hle/kernel/hle_ipc.h"
+-#include "core/hle/kernel/kernel.h"
+-#include "core/hle/kernel/thread.h"
+-#include "core/hle/kernel/writable_event.h"
+-
+-namespace Service::Sockets {
+-
+-/**
+- * Worker abstraction to execute blocking calls on host without blocking the guest thread
+- *
+- * @tparam Service  Service where the work is executed
+- * @tparam ...Types Types of work to execute
+- */
+-template <class Service, class... Types>
+-class BlockingWorker {
+-    using This = BlockingWorker<Service, Types...>;
+-    using WorkVariant = std::variant<std::monostate, Types...>;
+-
+-public:
+-    /// Create a new worker
+-    static std::unique_ptr<This> Create(Core::System& system, Service* service,
+-                                        std::string_view name) {
+-        return std::unique_ptr<This>(new This(system, service, name));
+-    }
+-
+-    ~BlockingWorker() {
+-        while (!is_available.load(std::memory_order_relaxed)) {
+-            // Busy wait until work is finished
+-            std::this_thread::yield();
+-        }
+-        // Monostate means to exit the thread
+-        work = std::monostate{};
+-        work_event.Set();
+-        thread.join();
+-    }
+-
+-    /**
+-     * Try to capture the worker to send work after a success
+-     * @returns True when the worker has been successfully captured
+-     */
+-    bool TryCapture() {
+-        bool expected = true;
+-        return is_available.compare_exchange_weak(expected, false, std::memory_order_relaxed,
+-                                                  std::memory_order_relaxed);
+-    }
+-
+-    /**
+-     * Send work to this worker abstraction
+-     * @see TryCapture must be called before attempting to call this function
+-     */
+-    template <class Work>
+-    void SendWork(Work new_work) {
+-        ASSERT_MSG(!is_available, "Trying to send work on a worker that's not captured");
+-        work = std::move(new_work);
+-        work_event.Set();
+-    }
+-
+-    /// Generate a callback for @see SleepClientThread
+-    template <class Work>
+-    auto Callback() {
+-        return [this](std::shared_ptr<Kernel::Thread>, Kernel::HLERequestContext& ctx,
+-                      Kernel::ThreadWakeupReason reason) {
+-            ASSERT(reason == Kernel::ThreadWakeupReason::Signal);
+-            std::get<Work>(work).Response(ctx);
+-            is_available.store(true);
+-        };
+-    }
+-
+-    /// Get kernel event that will be signalled by the worker when the host operation finishes
+-    std::shared_ptr<Kernel::WritableEvent> KernelEvent() const {
+-        return kernel_event;
+-    }
+-
+-private:
+-    explicit BlockingWorker(Core::System& system, Service* service, std::string_view name) {
+-        auto pair = Kernel::WritableEvent::CreateEventPair(system.Kernel(), std::string(name));
+-        kernel_event = std::move(pair.writable);
+-        thread = std::thread([this, &system, service, name] { Run(system, service, name); });
+-    }
+-
+-    void Run(Core::System& system, Service* service, std::string_view name) {
+-        system.RegisterHostThread();
+-
+-        const std::string thread_name = fmt::format("yuzu:{}", name);
+-        MicroProfileOnThreadCreate(thread_name.c_str());
+-        Common::SetCurrentThreadName(thread_name.c_str());
+-
+-        bool keep_running = true;
+-        while (keep_running) {
+-            work_event.Wait();
+-
+-            const auto visit_fn = [service, &keep_running](auto&& w) {
+-                using T = std::decay_t<decltype(w)>;
+-                if constexpr (std::is_same_v<T, std::monostate>) {
+-                    keep_running = false;
+-                } else {
+-                    w.Execute(service);
+-                }
+-            };
+-            std::visit(visit_fn, work);
+-
+-            kernel_event->Signal();
+-        }
+-    }
+-
+-    std::thread thread;
+-    WorkVariant work;
+-    Common::Event work_event;
+-    std::shared_ptr<Kernel::WritableEvent> kernel_event;
+-    std::atomic_bool is_available{true};
+-};
+-
+-template <class Service, class... Types>
+-class BlockingWorkerPool {
+-    using Worker = BlockingWorker<Service, Types...>;
+-
+-public:
+-    explicit BlockingWorkerPool(Core::System& system_, Service* service_)
+-        : system{system_}, service{service_} {}
+-
+-    /// Returns a captured worker thread, creating new ones if necessary
+-    Worker* CaptureWorker() {
+-        for (auto& worker : workers) {
+-            if (worker->TryCapture()) {
+-                return worker.get();
+-            }
+-        }
+-        auto new_worker = Worker::Create(system, service, fmt::format("BSD:{}", workers.size()));
+-        [[maybe_unused]] const bool success = new_worker->TryCapture();
+-        ASSERT(success);
+-
+-        return workers.emplace_back(std::move(new_worker)).get();
+-    }
+-
+-private:
+-    Core::System& system;
+-    Service* const service;
+-
+-    std::vector<std::unique_ptr<Worker>> workers;
+-};
+-
+-} // namespace Service::Sockets
+diff --git a/src/core/hle/service/sockets/bsd.cpp b/src/core/hle/service/sockets/bsd.cpp
+index ce219df0d..8d4952c0e 100644
+--- a/src/core/hle/service/sockets/bsd.cpp
++++ b/src/core/hle/service/sockets/bsd.cpp
+@@ -2,138 +2,18 @@
+ // Licensed under GPLv2 or any later version
+ // Refer to the license.txt file included.
+ 
+-#include <array>
+-#include <memory>
+-#include <string>
+-#include <utility>
+-#include <vector>
+-
+-#include <fmt/format.h>
+-
+-#include "common/microprofile.h"
+-#include "common/thread.h"
+ #include "core/hle/ipc_helpers.h"
+-#include "core/hle/kernel/thread.h"
+ #include "core/hle/service/sockets/bsd.h"
+-#include "core/hle/service/sockets/sockets_translate.h"
+-#include "core/network/network.h"
+-#include "core/network/sockets.h"
+ 
+ namespace Service::Sockets {
+ 
+-namespace {
+-
+-bool IsConnectionBased(Type type) {
+-    switch (type) {
+-    case Type::STREAM:
+-        return true;
+-    case Type::DGRAM:
+-        return false;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented type={}", static_cast<int>(type));
+-        return false;
+-    }
+-}
+-
+-} // Anonymous namespace
+-
+-void BSD::PollWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->PollImpl(write_buffer, read_buffer, nfds, timeout);
+-}
+-
+-void BSD::PollWork::Response(Kernel::HLERequestContext& ctx) {
+-    ctx.WriteBuffer(write_buffer);
+-
+-    IPC::ResponseBuilder rb{ctx, 4};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-}
+-
+-void BSD::AcceptWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->AcceptImpl(fd, write_buffer);
+-}
+-
+-void BSD::AcceptWork::Response(Kernel::HLERequestContext& ctx) {
+-    ctx.WriteBuffer(write_buffer);
+-
+-    IPC::ResponseBuilder rb{ctx, 5};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-    rb.Push<u32>(static_cast<u32>(write_buffer.size()));
+-}
+-
+-void BSD::ConnectWork::Execute(BSD* bsd) {
+-    bsd_errno = bsd->ConnectImpl(fd, addr);
+-}
+-
+-void BSD::ConnectWork::Response(Kernel::HLERequestContext& ctx) {
+-    IPC::ResponseBuilder rb{ctx, 4};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(bsd_errno == Errno::SUCCESS ? 0 : -1);
+-    rb.PushEnum(bsd_errno);
+-}
+-
+-void BSD::RecvWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->RecvImpl(fd, flags, message);
+-}
+-
+-void BSD::RecvWork::Response(Kernel::HLERequestContext& ctx) {
+-    ctx.WriteBuffer(message);
+-
+-    IPC::ResponseBuilder rb{ctx, 4};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-}
+-
+-void BSD::RecvFromWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->RecvFromImpl(fd, flags, message, addr);
+-}
+-
+-void BSD::RecvFromWork::Response(Kernel::HLERequestContext& ctx) {
+-    ctx.WriteBuffer(message, 0);
+-    if (!addr.empty()) {
+-        ctx.WriteBuffer(addr, 1);
+-    }
+-
+-    IPC::ResponseBuilder rb{ctx, 5};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-    rb.Push<u32>(static_cast<u32>(addr.size()));
+-}
+-
+-void BSD::SendWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->SendImpl(fd, flags, message);
+-}
+-
+-void BSD::SendWork::Response(Kernel::HLERequestContext& ctx) {
+-    IPC::ResponseBuilder rb{ctx, 4};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-}
+-
+-void BSD::SendToWork::Execute(BSD* bsd) {
+-    std::tie(ret, bsd_errno) = bsd->SendToImpl(fd, flags, message, addr);
+-}
+-
+-void BSD::SendToWork::Response(Kernel::HLERequestContext& ctx) {
+-    IPC::ResponseBuilder rb{ctx, 4};
+-    rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
+-}
+-
+ void BSD::RegisterClient(Kernel::HLERequestContext& ctx) {
+     LOG_WARNING(Service, "(STUBBED) called");
+ 
+     IPC::ResponseBuilder rb{ctx, 3};
+ 
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(0); // bsd errno
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::StartMonitoring(Kernel::HLERequestContext& ctx) {
+@@ -146,19 +26,20 @@ void BSD::StartMonitoring(Kernel::HLERequestContext& ctx) {
+ 
+ void BSD::Socket(Kernel::HLERequestContext& ctx) {
+     IPC::RequestParser rp{ctx};
+-    const u32 domain = rp.Pop<u32>();
+-    const u32 type = rp.Pop<u32>();
+-    const u32 protocol = rp.Pop<u32>();
+ 
+-    LOG_DEBUG(Service, "called domain={} type={} protocol={}", domain, type, protocol);
++    u32 domain = rp.Pop<u32>();
++    u32 type = rp.Pop<u32>();
++    u32 protocol = rp.Pop<u32>();
++
++    LOG_WARNING(Service, "(STUBBED) called domain={} type={} protocol={}", domain, type, protocol);
+ 
+-    const auto [fd, bsd_errno] = SocketImpl(static_cast<Domain>(domain), static_cast<Type>(type),
+-                                            static_cast<Protocol>(protocol));
++    u32 fd = next_fd++;
+ 
+     IPC::ResponseBuilder rb{ctx, 4};
++
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(fd);
+-    rb.PushEnum(bsd_errno);
++    rb.Push<u32>(fd);
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::Select(Kernel::HLERequestContext& ctx) {
+@@ -171,657 +52,67 @@ void BSD::Select(Kernel::HLERequestContext& ctx) {
+     rb.Push<u32>(0); // bsd errno
+ }
+ 
+-void BSD::Poll(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 nfds = rp.Pop<s32>();
+-    const s32 timeout = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called nfds={} timeout={}", nfds, timeout);
+-
+-    ExecuteWork(ctx, "BSD:Poll", timeout != 0,
+-                PollWork{
+-                    .nfds = nfds,
+-                    .timeout = timeout,
+-                    .read_buffer = ctx.ReadBuffer(),
+-                    .write_buffer = std::vector<u8>(ctx.GetWriteBufferSize()),
+-                });
+-}
+-
+-void BSD::Accept(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={}", fd);
+-
+-    ExecuteWork(ctx, "BSD:Accept", IsBlockingSocket(fd),
+-                AcceptWork{
+-                    .fd = fd,
+-                    .write_buffer = std::vector<u8>(ctx.GetWriteBufferSize()),
+-                });
+-}
+-
+ void BSD::Bind(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={} addrlen={}", fd, ctx.GetReadBufferSize());
+-
+-    BuildErrnoResponse(ctx, BindImpl(fd, ctx.ReadBuffer()));
+-}
+-
+-void BSD::Connect(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={} addrlen={}", fd, ctx.GetReadBufferSize());
+-
+-    ExecuteWork(ctx, "BSD:Connect", IsBlockingSocket(fd),
+-                ConnectWork{
+-                    .fd = fd,
+-                    .addr = ctx.ReadBuffer(),
+-                });
+-}
+-
+-void BSD::GetPeerName(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={}", fd);
+-
+-    std::vector<u8> write_buffer(ctx.GetWriteBufferSize());
+-    const Errno bsd_errno = GetPeerNameImpl(fd, write_buffer);
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+-    ctx.WriteBuffer(write_buffer);
++    IPC::ResponseBuilder rb{ctx, 4};
+ 
+-    IPC::ResponseBuilder rb{ctx, 5};
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(bsd_errno != Errno::SUCCESS ? -1 : 0);
+-    rb.PushEnum(bsd_errno);
+-    rb.Push<u32>(static_cast<u32>(write_buffer.size()));
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+-void BSD::GetSockName(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={}", fd);
+-
+-    std::vector<u8> write_buffer(ctx.GetWriteBufferSize());
+-    const Errno bsd_errno = GetSockNameImpl(fd, write_buffer);
++void BSD::Connect(Kernel::HLERequestContext& ctx) {
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+-    ctx.WriteBuffer(write_buffer);
++    IPC::ResponseBuilder rb{ctx, 4};
+ 
+-    IPC::ResponseBuilder rb{ctx, 5};
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(bsd_errno != Errno::SUCCESS ? -1 : 0);
+-    rb.PushEnum(bsd_errno);
+-    rb.Push<u32>(static_cast<u32>(write_buffer.size()));
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::Listen(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-    const s32 backlog = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={} backlog={}", fd, backlog);
+-
+-    BuildErrnoResponse(ctx, ListenImpl(fd, backlog));
+-}
+-
+-void BSD::Fcntl(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-    const s32 cmd = rp.Pop<s32>();
+-    const s32 arg = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={} cmd={} arg={}", fd, cmd, arg);
+-
+-    const auto [ret, bsd_errno] = FcntlImpl(fd, static_cast<FcntlCmd>(cmd), arg);
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+     IPC::ResponseBuilder rb{ctx, 4};
++
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(ret);
+-    rb.PushEnum(bsd_errno);
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::SetSockOpt(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-
+-    const s32 fd = rp.Pop<s32>();
+-    const u32 level = rp.Pop<u32>();
+-    const OptName optname = static_cast<OptName>(rp.Pop<u32>());
+-
+-    const std::vector<u8> buffer = ctx.ReadBuffer();
+-    const u8* optval = buffer.empty() ? nullptr : buffer.data();
+-    size_t optlen = buffer.size();
+-
+-    std::array<u64, 2> values;
+-    if ((optname == OptName::SNDTIMEO || optname == OptName::RCVTIMEO) && buffer.size() == 8) {
+-        std::memcpy(values.data(), buffer.data(), sizeof(values));
+-        optlen = sizeof(values);
+-        optval = reinterpret_cast<const u8*>(values.data());
+-    }
+-
+-    LOG_DEBUG(Service, "called fd={} level={} optname=0x{:x} optlen={}", fd, level,
+-              static_cast<u32>(optname), optlen);
+-
+-    BuildErrnoResponse(ctx, SetSockOptImpl(fd, level, optname, optlen, optval));
+-}
+-
+-void BSD::Shutdown(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-
+-    const s32 fd = rp.Pop<s32>();
+-    const s32 how = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={} how={}", fd, how);
+-
+-    BuildErrnoResponse(ctx, ShutdownImpl(fd, how));
+-}
+-
+-void BSD::Recv(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-
+-    const s32 fd = rp.Pop<s32>();
+-    const u32 flags = rp.Pop<u32>();
+-
+-    LOG_DEBUG(Service, "called fd={} flags=0x{:x} len={}", fd, flags, ctx.GetWriteBufferSize());
+-
+-    ExecuteWork(ctx, "BSD:Recv", IsBlockingSocket(fd),
+-                RecvWork{
+-                    .fd = fd,
+-                    .flags = flags,
+-                    .message = std::vector<u8>(ctx.GetWriteBufferSize()),
+-                });
+-}
+-
+-void BSD::RecvFrom(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-
+-    const s32 fd = rp.Pop<s32>();
+-    const u32 flags = rp.Pop<u32>();
+-
+-    LOG_DEBUG(Service, "called fd={} flags=0x{:x} len={} addrlen={}", fd, flags,
+-              ctx.GetWriteBufferSize(0), ctx.GetWriteBufferSize(1));
+-
+-    ExecuteWork(ctx, "BSD:RecvFrom", IsBlockingSocket(fd),
+-                RecvFromWork{
+-                    .fd = fd,
+-                    .flags = flags,
+-                    .message = std::vector<u8>(ctx.GetWriteBufferSize(0)),
+-                    .addr = std::vector<u8>(ctx.GetWriteBufferSize(1)),
+-                });
+-}
+-
+-void BSD::Send(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-
+-    const s32 fd = rp.Pop<s32>();
+-    const u32 flags = rp.Pop<u32>();
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+-    LOG_DEBUG(Service, "called fd={} flags=0x{:x} len={}", fd, flags, ctx.GetReadBufferSize());
++    IPC::ResponseBuilder rb{ctx, 4};
+ 
+-    ExecuteWork(ctx, "BSD:Send", IsBlockingSocket(fd),
+-                SendWork{
+-                    .fd = fd,
+-                    .flags = flags,
+-                    .message = ctx.ReadBuffer(),
+-                });
++    rb.Push(RESULT_SUCCESS);
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::SendTo(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-    const u32 flags = rp.Pop<u32>();
+-
+-    LOG_DEBUG(Service, "called fd={} flags=0x{} len={} addrlen={}", fd, flags,
+-              ctx.GetReadBufferSize(0), ctx.GetReadBufferSize(1));
+-
+-    ExecuteWork(ctx, "BSD:SendTo", IsBlockingSocket(fd),
+-                SendToWork{
+-                    .fd = fd,
+-                    .flags = flags,
+-                    .message = ctx.ReadBuffer(0),
+-                    .addr = ctx.ReadBuffer(1),
+-                });
+-}
+-
+-void BSD::Write(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+-    LOG_DEBUG(Service, "called fd={} len={}", fd, ctx.GetReadBufferSize());
++    IPC::ResponseBuilder rb{ctx, 4};
+ 
+-    ExecuteWork(ctx, "BSD:Write", IsBlockingSocket(fd),
+-                SendWork{
+-                    .fd = fd,
+-                    .flags = 0,
+-                    .message = ctx.ReadBuffer(),
+-                });
++    rb.Push(RESULT_SUCCESS);
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+ void BSD::Close(Kernel::HLERequestContext& ctx) {
+-    IPC::RequestParser rp{ctx};
+-    const s32 fd = rp.Pop<s32>();
+-
+-    LOG_DEBUG(Service, "called fd={}", fd);
+-
+-    BuildErrnoResponse(ctx, CloseImpl(fd));
+-}
+-
+-template <typename Work>
+-void BSD::ExecuteWork(Kernel::HLERequestContext& ctx, std::string_view sleep_reason,
+-                      bool is_blocking, Work work) {
+-    if (!is_blocking) {
+-        work.Execute(this);
+-        work.Response(ctx);
+-        return;
+-    }
+-
+-    // Signal a dummy response to make IPC validation happy
+-    // This will be overwritten by the SleepClientThread callback
+-    work.Response(ctx);
+-
+-    auto worker = worker_pool.CaptureWorker();
+-
+-    ctx.SleepClientThread(std::string(sleep_reason), std::numeric_limits<u64>::max(),
+-                          worker->Callback<Work>(), worker->KernelEvent());
+-
+-    worker->SendWork(std::move(work));
+-}
+-
+-std::pair<s32, Errno> BSD::SocketImpl(Domain domain, Type type, Protocol protocol) {
+-    if (type == Type::SEQPACKET) {
+-        UNIMPLEMENTED_MSG("SOCK_SEQPACKET errno management");
+-    } else if (type == Type::RAW && (domain != Domain::INET || protocol != Protocol::ICMP)) {
+-        UNIMPLEMENTED_MSG("SOCK_RAW errno management");
+-    }
+-
+-    [[maybe_unused]] const bool unk_flag = (static_cast<u32>(type) & 0x20000000) != 0;
+-    UNIMPLEMENTED_IF_MSG(unk_flag, "Unknown flag in type");
+-
+-    const s32 fd = FindFreeFileDescriptorHandle();
+-    if (fd < 0) {
+-        LOG_ERROR(Service, "No more file descriptors available");
+-        return {-1, Errno::MFILE};
+-    }
+-
+-    FileDescriptor& descriptor = file_descriptors[fd].emplace();
+-    // ENONMEM might be thrown here
+-
+-    LOG_INFO(Service, "New socket fd={}", fd);
+-
+-    descriptor.socket = std::make_unique<Network::Socket>();
+-    descriptor.socket->Initialize(Translate(domain), Translate(type), Translate(type, protocol));
+-    descriptor.is_connection_based = IsConnectionBased(type);
+-
+-    return {fd, Errno::SUCCESS};
+-}
+-
+-std::pair<s32, Errno> BSD::PollImpl(std::vector<u8>& write_buffer, std::vector<u8> read_buffer,
+-                                    s32 nfds, s32 timeout) {
+-    if (write_buffer.size() < nfds * sizeof(PollFD)) {
+-        return {-1, Errno::INVAL};
+-    }
+-
+-    const size_t length = std::min(read_buffer.size(), write_buffer.size());
+-    std::vector<PollFD> fds(nfds);
+-    std::memcpy(fds.data(), read_buffer.data(), length);
+-
+-    if (timeout >= 0) {
+-        const s64 seconds = timeout / 1000;
+-        const u64 nanoseconds = 1'000'000 * (static_cast<u64>(timeout) % 1000);
+-
+-        if (seconds < 0) {
+-            return {-1, Errno::INVAL};
+-        }
+-        if (nanoseconds > 999'999'999) {
+-            return {-1, Errno::INVAL};
+-        }
+-    } else if (timeout != -1) {
+-        return {-1, Errno::INVAL};
+-    }
+-
+-    for (PollFD& pollfd : fds) {
+-        ASSERT(pollfd.revents == 0);
+-
+-        if (pollfd.fd > MAX_FD || pollfd.fd < 0) {
+-            LOG_ERROR(Service, "File descriptor handle={} is invalid", pollfd.fd);
+-            pollfd.revents = 0;
+-            return {0, Errno::SUCCESS};
+-        }
+-
+-        std::optional<FileDescriptor>& descriptor = file_descriptors[pollfd.fd];
+-        if (!descriptor) {
+-            LOG_ERROR(Service, "File descriptor handle={} is not allocated", pollfd.fd);
+-            pollfd.revents = POLL_NVAL;
+-            return {0, Errno::SUCCESS};
+-        }
+-    }
+-
+-    std::vector<Network::PollFD> host_pollfds(fds.size());
+-    std::transform(fds.begin(), fds.end(), host_pollfds.begin(), [this](PollFD pollfd) {
+-        Network::PollFD result;
+-        result.socket = file_descriptors[pollfd.fd]->socket.get();
+-        result.events = TranslatePollEventsToHost(pollfd.events);
+-        result.revents = 0;
+-        return result;
+-    });
+-
+-    const auto result = Network::Poll(host_pollfds, timeout);
+-
+-    const size_t num = host_pollfds.size();
+-    for (size_t i = 0; i < num; ++i) {
+-        fds[i].revents = TranslatePollEventsToGuest(host_pollfds[i].revents);
+-    }
+-    std::memcpy(write_buffer.data(), fds.data(), length);
+-
+-    return Translate(result);
+-}
+-
+-std::pair<s32, Errno> BSD::AcceptImpl(s32 fd, std::vector<u8>& write_buffer) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-
+-    const s32 new_fd = FindFreeFileDescriptorHandle();
+-    if (new_fd < 0) {
+-        LOG_ERROR(Service, "No more file descriptors available");
+-        return {-1, Errno::MFILE};
+-    }
+-
+-    FileDescriptor& descriptor = *file_descriptors[fd];
+-    auto [result, bsd_errno] = descriptor.socket->Accept();
+-    if (bsd_errno != Network::Errno::SUCCESS) {
+-        return {-1, Translate(bsd_errno)};
+-    }
+-
+-    FileDescriptor& new_descriptor = file_descriptors[new_fd].emplace();
+-    new_descriptor.socket = std::move(result.socket);
+-    new_descriptor.is_connection_based = descriptor.is_connection_based;
+-
+-    ASSERT(write_buffer.size() == sizeof(SockAddrIn));
+-    const SockAddrIn guest_addr_in = Translate(result.sockaddr_in);
+-    std::memcpy(write_buffer.data(), &guest_addr_in, sizeof(guest_addr_in));
+-
+-    return {new_fd, Errno::SUCCESS};
+-}
+-
+-Errno BSD::BindImpl(s32 fd, const std::vector<u8>& addr) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-    ASSERT(addr.size() == sizeof(SockAddrIn));
+-    SockAddrIn addr_in;
+-    std::memcpy(&addr_in, addr.data(), sizeof(addr_in));
+-
+-    return Translate(file_descriptors[fd]->socket->Bind(Translate(addr_in)));
+-}
+-
+-Errno BSD::ConnectImpl(s32 fd, const std::vector<u8>& addr) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-
+-    UNIMPLEMENTED_IF(addr.size() != sizeof(SockAddrIn));
+-    SockAddrIn addr_in;
+-    std::memcpy(&addr_in, addr.data(), sizeof(addr_in));
+-
+-    return Translate(file_descriptors[fd]->socket->Connect(Translate(addr_in)));
+-}
+-
+-Errno BSD::GetPeerNameImpl(s32 fd, std::vector<u8>& write_buffer) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-
+-    const auto [addr_in, bsd_errno] = file_descriptors[fd]->socket->GetPeerName();
+-    if (bsd_errno != Network::Errno::SUCCESS) {
+-        return Translate(bsd_errno);
+-    }
+-    const SockAddrIn guest_addrin = Translate(addr_in);
+-
+-    ASSERT(write_buffer.size() == sizeof(guest_addrin));
+-    std::memcpy(write_buffer.data(), &guest_addrin, sizeof(guest_addrin));
+-    return Translate(bsd_errno);
+-}
+-
+-Errno BSD::GetSockNameImpl(s32 fd, std::vector<u8>& write_buffer) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-
+-    const auto [addr_in, bsd_errno] = file_descriptors[fd]->socket->GetSockName();
+-    if (bsd_errno != Network::Errno::SUCCESS) {
+-        return Translate(bsd_errno);
+-    }
+-    const SockAddrIn guest_addrin = Translate(addr_in);
+-
+-    ASSERT(write_buffer.size() == sizeof(guest_addrin));
+-    std::memcpy(write_buffer.data(), &guest_addrin, sizeof(guest_addrin));
+-    return Translate(bsd_errno);
+-}
+-
+-Errno BSD::ListenImpl(s32 fd, s32 backlog) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-    return Translate(file_descriptors[fd]->socket->Listen(backlog));
+-}
+-
+-std::pair<s32, Errno> BSD::FcntlImpl(s32 fd, FcntlCmd cmd, s32 arg) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-
+-    FileDescriptor& descriptor = *file_descriptors[fd];
+-
+-    switch (cmd) {
+-    case FcntlCmd::GETFL:
+-        ASSERT(arg == 0);
+-        return {descriptor.flags, Errno::SUCCESS};
+-    case FcntlCmd::SETFL: {
+-        const bool enable = (arg & FLAG_O_NONBLOCK) != 0;
+-        const Errno bsd_errno = Translate(descriptor.socket->SetNonBlock(enable));
+-        if (bsd_errno != Errno::SUCCESS) {
+-            return {-1, bsd_errno};
+-        }
+-        descriptor.flags = arg;
+-        return {0, Errno::SUCCESS};
+-    }
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented cmd={}", static_cast<int>(cmd));
+-        return {-1, Errno::SUCCESS};
+-    }
+-}
+-
+-Errno BSD::SetSockOptImpl(s32 fd, u32 level, OptName optname, size_t optlen, const void* optval) {
+-    UNIMPLEMENTED_IF(level != 0xffff); // SOL_SOCKET
+-
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-
+-    Network::Socket* const socket = file_descriptors[fd]->socket.get();
+-
+-    if (optname == OptName::LINGER) {
+-        ASSERT(optlen == sizeof(Linger));
+-        Linger linger;
+-        std::memcpy(&linger, optval, sizeof(linger));
+-        ASSERT(linger.onoff == 0 || linger.onoff == 1);
+-
+-        return Translate(socket->SetLinger(linger.onoff != 0, linger.linger));
+-    }
+-
+-    ASSERT(optlen == sizeof(u32));
+-    u32 value;
+-    std::memcpy(&value, optval, sizeof(value));
+-
+-    switch (optname) {
+-    case OptName::REUSEADDR:
+-        ASSERT(value == 0 || value == 1);
+-        return Translate(socket->SetReuseAddr(value != 0));
+-    case OptName::BROADCAST:
+-        ASSERT(value == 0 || value == 1);
+-        return Translate(socket->SetBroadcast(value != 0));
+-    case OptName::SNDBUF:
+-        return Translate(socket->SetSndBuf(value));
+-    case OptName::RCVBUF:
+-        return Translate(socket->SetRcvBuf(value));
+-    case OptName::SNDTIMEO:
+-        return Translate(socket->SetSndTimeo(value));
+-    case OptName::RCVTIMEO:
+-        return Translate(socket->SetRcvTimeo(value));
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented optname={}", static_cast<int>(optname));
+-        return Errno::SUCCESS;
+-    }
+-}
+-
+-Errno BSD::ShutdownImpl(s32 fd, s32 how) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-    const Network::ShutdownHow host_how = Translate(static_cast<ShutdownHow>(how));
+-    return Translate(file_descriptors[fd]->socket->Shutdown(host_how));
+-}
+-
+-std::pair<s32, Errno> BSD::RecvImpl(s32 fd, u32 flags, std::vector<u8>& message) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-    return Translate(file_descriptors[fd]->socket->Recv(flags, message));
+-}
+-
+-std::pair<s32, Errno> BSD::RecvFromImpl(s32 fd, u32 flags, std::vector<u8>& message,
+-                                        std::vector<u8>& addr) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-
+-    FileDescriptor& descriptor = *file_descriptors[fd];
+-
+-    Network::SockAddrIn addr_in{};
+-    Network::SockAddrIn* p_addr_in = nullptr;
+-    if (descriptor.is_connection_based) {
+-        // Connection based file descriptors (e.g. TCP) zero addr
+-        addr.clear();
+-    } else {
+-        p_addr_in = &addr_in;
+-    }
+-
+-    // Apply flags
+-    if ((flags & FLAG_MSG_DONTWAIT) != 0) {
+-        flags &= ~FLAG_MSG_DONTWAIT;
+-        if ((descriptor.flags & FLAG_O_NONBLOCK) == 0) {
+-            descriptor.socket->SetNonBlock(true);
+-        }
+-    }
+-
+-    const auto [ret, bsd_errno] = Translate(descriptor.socket->RecvFrom(flags, message, p_addr_in));
+-
+-    // Restore original state
+-    if ((descriptor.flags & FLAG_O_NONBLOCK) == 0) {
+-        descriptor.socket->SetNonBlock(false);
+-    }
+-
+-    if (p_addr_in) {
+-        if (ret < 0) {
+-            addr.clear();
+-        } else {
+-            ASSERT(addr.size() == sizeof(SockAddrIn));
+-            const SockAddrIn result = Translate(addr_in);
+-            std::memcpy(addr.data(), &result, sizeof(result));
+-        }
+-    }
+-
+-    return {ret, bsd_errno};
+-}
+-
+-std::pair<s32, Errno> BSD::SendImpl(s32 fd, u32 flags, const std::vector<u8>& message) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-    return Translate(file_descriptors[fd]->socket->Send(message, flags));
+-}
+-
+-std::pair<s32, Errno> BSD::SendToImpl(s32 fd, u32 flags, const std::vector<u8>& message,
+-                                      const std::vector<u8>& addr) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return {-1, Errno::BADF};
+-    }
+-
+-    Network::SockAddrIn addr_in;
+-    Network::SockAddrIn* p_addr_in = nullptr;
+-    if (!addr.empty()) {
+-        ASSERT(addr.size() == sizeof(SockAddrIn));
+-        SockAddrIn guest_addr_in;
+-        std::memcpy(&guest_addr_in, addr.data(), sizeof(guest_addr_in));
+-        addr_in = Translate(guest_addr_in);
+-    }
+-
+-    return Translate(file_descriptors[fd]->socket->SendTo(flags, message, p_addr_in));
+-}
+-
+-Errno BSD::CloseImpl(s32 fd) {
+-    if (!IsFileDescriptorValid(fd)) {
+-        return Errno::BADF;
+-    }
+-
+-    const Errno bsd_errno = Translate(file_descriptors[fd]->socket->Close());
+-    if (bsd_errno != Errno::SUCCESS) {
+-        return bsd_errno;
+-    }
+-
+-    LOG_INFO(Service, "Close socket fd={}", fd);
+-
+-    file_descriptors[fd].reset();
+-    return bsd_errno;
+-}
+-
+-s32 BSD::FindFreeFileDescriptorHandle() noexcept {
+-    for (s32 fd = 0; fd < static_cast<s32>(file_descriptors.size()); ++fd) {
+-        if (!file_descriptors[fd]) {
+-            return fd;
+-        }
+-    }
+-    return -1;
+-}
+-
+-bool BSD::IsFileDescriptorValid(s32 fd) const noexcept {
+-    if (fd > MAX_FD || fd < 0) {
+-        LOG_ERROR(Service, "Invalid file descriptor handle={}", fd);
+-        return false;
+-    }
+-    if (!file_descriptors[fd]) {
+-        LOG_ERROR(Service, "File descriptor handle={} is not allocated", fd);
+-        return false;
+-    }
+-    return true;
+-}
+-
+-bool BSD::IsBlockingSocket(s32 fd) const noexcept {
+-    // Inform invalid sockets as non-blocking
+-    // This way we avoid using a worker thread as it will fail without blocking host
+-    if (fd > MAX_FD || fd < 0) {
+-        return false;
+-    }
+-    if (!file_descriptors[fd]) {
+-        return false;
+-    }
+-    return (file_descriptors[fd]->flags & FLAG_O_NONBLOCK) != 0;
+-}
++    LOG_WARNING(Service, "(STUBBED) called");
+ 
+-void BSD::BuildErrnoResponse(Kernel::HLERequestContext& ctx, Errno bsd_errno) const noexcept {
+     IPC::ResponseBuilder rb{ctx, 4};
+ 
+     rb.Push(RESULT_SUCCESS);
+-    rb.Push<s32>(bsd_errno == Errno::SUCCESS ? 0 : -1);
+-    rb.PushEnum(bsd_errno);
++    rb.Push<u32>(0); // ret
++    rb.Push<u32>(0); // bsd errno
+ }
+ 
+-BSD::BSD(Core::System& system, const char* name)
+-    : ServiceFramework(name), worker_pool{system, this} {
++BSD::BSD(const char* name) : ServiceFramework(name) {
+     // clang-format off
+     static const FunctionInfo functions[] = {
+         {0, &BSD::RegisterClient, "RegisterClient"},
+@@ -830,25 +121,25 @@ BSD::BSD(Core::System& system, const char* name)
+         {3, nullptr, "SocketExempt"},
+         {4, nullptr, "Open"},
+         {5, &BSD::Select, "Select"},
+-        {6, &BSD::Poll, "Poll"},
++        {6, nullptr, "Poll"},
+         {7, nullptr, "Sysctl"},
+-        {8, &BSD::Recv, "Recv"},
+-        {9, &BSD::RecvFrom, "RecvFrom"},
+-        {10, &BSD::Send, "Send"},
++        {8, nullptr, "Recv"},
++        {9, nullptr, "RecvFrom"},
++        {10, nullptr, "Send"},
+         {11, &BSD::SendTo, "SendTo"},
+-        {12, &BSD::Accept, "Accept"},
++        {12, nullptr, "Accept"},
+         {13, &BSD::Bind, "Bind"},
+         {14, &BSD::Connect, "Connect"},
+-        {15, &BSD::GetPeerName, "GetPeerName"},
+-        {16, &BSD::GetSockName, "GetSockName"},
++        {15, nullptr, "GetPeerName"},
++        {16, nullptr, "GetSockName"},
+         {17, nullptr, "GetSockOpt"},
+         {18, &BSD::Listen, "Listen"},
+         {19, nullptr, "Ioctl"},
+-        {20, &BSD::Fcntl, "Fcntl"},
++        {20, nullptr, "Fcntl"},
+         {21, &BSD::SetSockOpt, "SetSockOpt"},
+-        {22, &BSD::Shutdown, "Shutdown"},
++        {22, nullptr, "Shutdown"},
+         {23, nullptr, "ShutdownAllSockets"},
+-        {24, &BSD::Write, "Write"},
++        {24, nullptr, "Write"},
+         {25, nullptr, "Read"},
+         {26, &BSD::Close, "Close"},
+         {27, nullptr, "DuplicateSocket"},
+diff --git a/src/core/hle/service/sockets/bsd.h b/src/core/hle/service/sockets/bsd.h
+index 357531951..3098e3baf 100644
+--- a/src/core/hle/service/sockets/bsd.h
++++ b/src/core/hle/service/sockets/bsd.h
+@@ -4,174 +4,30 @@
+ 
+ #pragma once
+ 
+-#include <memory>
+-#include <string_view>
+-#include <vector>
+-
+-#include "common/common_types.h"
+ #include "core/hle/kernel/hle_ipc.h"
+ #include "core/hle/service/service.h"
+-#include "core/hle/service/sockets/blocking_worker.h"
+-#include "core/hle/service/sockets/sockets.h"
+-
+-namespace Core {
+-class System;
+-}
+-
+-namespace Network {
+-class Socket;
+-}
+ 
+ namespace Service::Sockets {
+ 
+ class BSD final : public ServiceFramework<BSD> {
+ public:
+-    explicit BSD(Core::System& system, const char* name);
++    explicit BSD(const char* name);
+     ~BSD() override;
+ 
+ private:
+-    /// Maximum number of file descriptors
+-    static constexpr size_t MAX_FD = 128;
+-
+-    struct FileDescriptor {
+-        std::unique_ptr<Network::Socket> socket;
+-        s32 flags = 0;
+-        bool is_connection_based = false;
+-    };
+-
+-    struct PollWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 nfds;
+-        s32 timeout;
+-        std::vector<u8> read_buffer;
+-        std::vector<u8> write_buffer;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+-    struct AcceptWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        std::vector<u8> write_buffer;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+-    struct ConnectWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        std::vector<u8> addr;
+-        Errno bsd_errno{};
+-    };
+-
+-    struct RecvWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        u32 flags;
+-        std::vector<u8> message;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+-    struct RecvFromWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        u32 flags;
+-        std::vector<u8> message;
+-        std::vector<u8> addr;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+-    struct SendWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        u32 flags;
+-        std::vector<u8> message;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+-    struct SendToWork {
+-        void Execute(BSD* bsd);
+-        void Response(Kernel::HLERequestContext& ctx);
+-
+-        s32 fd;
+-        u32 flags;
+-        std::vector<u8> message;
+-        std::vector<u8> addr;
+-        s32 ret{};
+-        Errno bsd_errno{};
+-    };
+-
+     void RegisterClient(Kernel::HLERequestContext& ctx);
+     void StartMonitoring(Kernel::HLERequestContext& ctx);
+     void Socket(Kernel::HLERequestContext& ctx);
+     void Select(Kernel::HLERequestContext& ctx);
+-    void Poll(Kernel::HLERequestContext& ctx);
+-    void Accept(Kernel::HLERequestContext& ctx);
+     void Bind(Kernel::HLERequestContext& ctx);
+     void Connect(Kernel::HLERequestContext& ctx);
+-    void GetPeerName(Kernel::HLERequestContext& ctx);
+-    void GetSockName(Kernel::HLERequestContext& ctx);
+     void Listen(Kernel::HLERequestContext& ctx);
+-    void Fcntl(Kernel::HLERequestContext& ctx);
+     void SetSockOpt(Kernel::HLERequestContext& ctx);
+-    void Shutdown(Kernel::HLERequestContext& ctx);
+-    void Recv(Kernel::HLERequestContext& ctx);
+-    void RecvFrom(Kernel::HLERequestContext& ctx);
+-    void Send(Kernel::HLERequestContext& ctx);
+     void SendTo(Kernel::HLERequestContext& ctx);
+-    void Write(Kernel::HLERequestContext& ctx);
+     void Close(Kernel::HLERequestContext& ctx);
+ 
+-    template <typename Work>
+-    void ExecuteWork(Kernel::HLERequestContext& ctx, std::string_view sleep_reason,
+-                     bool is_blocking, Work work);
+-
+-    std::pair<s32, Errno> SocketImpl(Domain domain, Type type, Protocol protocol);
+-    std::pair<s32, Errno> PollImpl(std::vector<u8>& write_buffer, std::vector<u8> read_buffer,
+-                                   s32 nfds, s32 timeout);
+-    std::pair<s32, Errno> AcceptImpl(s32 fd, std::vector<u8>& write_buffer);
+-    Errno BindImpl(s32 fd, const std::vector<u8>& addr);
+-    Errno ConnectImpl(s32 fd, const std::vector<u8>& addr);
+-    Errno GetPeerNameImpl(s32 fd, std::vector<u8>& write_buffer);
+-    Errno GetSockNameImpl(s32 fd, std::vector<u8>& write_buffer);
+-    Errno ListenImpl(s32 fd, s32 backlog);
+-    std::pair<s32, Errno> FcntlImpl(s32 fd, FcntlCmd cmd, s32 arg);
+-    Errno SetSockOptImpl(s32 fd, u32 level, OptName optname, size_t optlen, const void* optval);
+-    Errno ShutdownImpl(s32 fd, s32 how);
+-    std::pair<s32, Errno> RecvImpl(s32 fd, u32 flags, std::vector<u8>& message);
+-    std::pair<s32, Errno> RecvFromImpl(s32 fd, u32 flags, std::vector<u8>& message,
+-                                       std::vector<u8>& addr);
+-    std::pair<s32, Errno> SendImpl(s32 fd, u32 flags, const std::vector<u8>& message);
+-    std::pair<s32, Errno> SendToImpl(s32 fd, u32 flags, const std::vector<u8>& message,
+-                                     const std::vector<u8>& addr);
+-    Errno CloseImpl(s32 fd);
+-
+-    s32 FindFreeFileDescriptorHandle() noexcept;
+-    bool IsFileDescriptorValid(s32 fd) const noexcept;
+-    bool IsBlockingSocket(s32 fd) const noexcept;
+-
+-    void BuildErrnoResponse(Kernel::HLERequestContext& ctx, Errno bsd_errno) const noexcept;
+-
+-    std::array<std::optional<FileDescriptor>, MAX_FD> file_descriptors;
+-
+-    BlockingWorkerPool<BSD, PollWork, AcceptWork, ConnectWork, RecvWork, RecvFromWork, SendWork,
+-                       SendToWork>
+-        worker_pool;
++    /// Id to use for the next open file descriptor.
++    u32 next_fd = 1;
+ };
+ 
+ class BSDCFG final : public ServiceFramework<BSDCFG> {
+diff --git a/src/core/hle/service/sockets/sockets.cpp b/src/core/hle/service/sockets/sockets.cpp
+index 1d27f7906..08d2d306a 100644
+--- a/src/core/hle/service/sockets/sockets.cpp
++++ b/src/core/hle/service/sockets/sockets.cpp
+@@ -10,9 +10,9 @@
+ 
+ namespace Service::Sockets {
+ 
+-void InstallInterfaces(SM::ServiceManager& service_manager, Core::System& system) {
+-    std::make_shared<BSD>(system, "bsd:s")->InstallAsService(service_manager);
+-    std::make_shared<BSD>(system, "bsd:u")->InstallAsService(service_manager);
++void InstallInterfaces(SM::ServiceManager& service_manager) {
++    std::make_shared<BSD>("bsd:s")->InstallAsService(service_manager);
++    std::make_shared<BSD>("bsd:u")->InstallAsService(service_manager);
+     std::make_shared<BSDCFG>()->InstallAsService(service_manager);
+ 
+     std::make_shared<ETHC_C>()->InstallAsService(service_manager);
+diff --git a/src/core/hle/service/sockets/sockets.h b/src/core/hle/service/sockets/sockets.h
+index 89a410076..ca8a6a7e0 100644
+--- a/src/core/hle/service/sockets/sockets.h
++++ b/src/core/hle/service/sockets/sockets.h
+@@ -4,94 +4,11 @@
+ 
+ #pragma once
+ 
+-#include "common/common_types.h"
+ #include "core/hle/service/service.h"
+ 
+-namespace Core {
+-class System;
+-}
+-
+ namespace Service::Sockets {
+ 
+-enum class Errno : u32 {
+-    SUCCESS = 0,
+-    BADF = 9,
+-    AGAIN = 11,
+-    INVAL = 22,
+-    MFILE = 24,
+-    NOTCONN = 107,
+-};
+-
+-enum class Domain : u32 {
+-    INET = 2,
+-};
+-
+-enum class Type : u32 {
+-    STREAM = 1,
+-    DGRAM = 2,
+-    RAW = 3,
+-    SEQPACKET = 5,
+-};
+-
+-enum class Protocol : u32 {
+-    UNSPECIFIED = 0,
+-    ICMP = 1,
+-    TCP = 6,
+-    UDP = 17,
+-};
+-
+-enum class OptName : u32 {
+-    REUSEADDR = 0x4,
+-    BROADCAST = 0x20,
+-    LINGER = 0x80,
+-    SNDBUF = 0x1001,
+-    RCVBUF = 0x1002,
+-    SNDTIMEO = 0x1005,
+-    RCVTIMEO = 0x1006,
+-};
+-
+-enum class ShutdownHow : s32 {
+-    RD = 0,
+-    WR = 1,
+-    RDWR = 2,
+-};
+-
+-enum class FcntlCmd : s32 {
+-    GETFL = 3,
+-    SETFL = 4,
+-};
+-
+-struct SockAddrIn {
+-    u8 len;
+-    u8 family;
+-    u16 portno;
+-    std::array<u8, 4> ip;
+-    std::array<u8, 8> zeroes;
+-};
+-
+-struct PollFD {
+-    s32 fd;
+-    u16 events;
+-    u16 revents;
+-};
+-
+-struct Linger {
+-    u32 onoff;
+-    u32 linger;
+-};
+-
+-constexpr u16 POLL_IN = 0x01;
+-constexpr u16 POLL_PRI = 0x02;
+-constexpr u16 POLL_OUT = 0x04;
+-constexpr u16 POLL_ERR = 0x08;
+-constexpr u16 POLL_HUP = 0x10;
+-constexpr u16 POLL_NVAL = 0x20;
+-
+-constexpr u32 FLAG_MSG_DONTWAIT = 0x80;
+-
+-constexpr u32 FLAG_O_NONBLOCK = 0x800;
+-
+ /// Registers all Sockets services with the specified service manager.
+-void InstallInterfaces(SM::ServiceManager& service_manager, Core::System& system);
++void InstallInterfaces(SM::ServiceManager& service_manager);
+ 
+ } // namespace Service::Sockets
+diff --git a/src/core/hle/service/sockets/sockets_translate.cpp b/src/core/hle/service/sockets/sockets_translate.cpp
+deleted file mode 100644
+index 2be8f642d..000000000
+--- a/src/core/hle/service/sockets/sockets_translate.cpp
++++ /dev/null
+@@ -1,165 +0,0 @@
+-// Copyright 2020 yuzu emulator team
+-// Licensed under GPLv2 or any later version
+-// Refer to the license.txt file included.
+-
+-#include <utility>
+-
+-#include "common/assert.h"
+-#include "common/common_types.h"
+-#include "core/hle/service/sockets/sockets.h"
+-#include "core/hle/service/sockets/sockets_translate.h"
+-#include "core/network/network.h"
+-
+-namespace Service::Sockets {
+-
+-Errno Translate(Network::Errno value) {
+-    switch (value) {
+-    case Network::Errno::SUCCESS:
+-        return Errno::SUCCESS;
+-    case Network::Errno::BADF:
+-        return Errno::BADF;
+-    case Network::Errno::AGAIN:
+-        return Errno::AGAIN;
+-    case Network::Errno::INVAL:
+-        return Errno::INVAL;
+-    case Network::Errno::MFILE:
+-        return Errno::MFILE;
+-    case Network::Errno::NOTCONN:
+-        return Errno::NOTCONN;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented errno={}", static_cast<int>(value));
+-        return Errno::SUCCESS;
+-    }
+-}
+-
+-std::pair<s32, Errno> Translate(std::pair<s32, Network::Errno> value) {
+-    return {value.first, Translate(value.second)};
+-}
+-
+-Network::Domain Translate(Domain domain) {
+-    switch (domain) {
+-    case Domain::INET:
+-        return Network::Domain::INET;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented domain={}", static_cast<int>(domain));
+-        return {};
+-    }
+-}
+-
+-Domain Translate(Network::Domain domain) {
+-    switch (domain) {
+-    case Network::Domain::INET:
+-        return Domain::INET;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented domain={}", static_cast<int>(domain));
+-        return {};
+-    }
+-}
+-
+-Network::Type Translate(Type type) {
+-    switch (type) {
+-    case Type::STREAM:
+-        return Network::Type::STREAM;
+-    case Type::DGRAM:
+-        return Network::Type::DGRAM;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented type={}", static_cast<int>(type));
+-    }
+-}
+-
+-Network::Protocol Translate(Type type, Protocol protocol) {
+-    switch (protocol) {
+-    case Protocol::UNSPECIFIED:
+-        LOG_WARNING(Service, "Unspecified protocol, assuming protocol from type");
+-        switch (type) {
+-        case Type::DGRAM:
+-            return Network::Protocol::UDP;
+-        case Type::STREAM:
+-            return Network::Protocol::TCP;
+-        default:
+-            return Network::Protocol::TCP;
+-        }
+-    case Protocol::TCP:
+-        return Network::Protocol::TCP;
+-    case Protocol::UDP:
+-        return Network::Protocol::UDP;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented protocol={}", static_cast<int>(protocol));
+-        return Network::Protocol::TCP;
+-    }
+-}
+-
+-u16 TranslatePollEventsToHost(u16 flags) {
+-    u16 result = 0;
+-    const auto translate = [&result, &flags](u16 from, u16 to) {
+-        if ((flags & from) != 0) {
+-            flags &= ~from;
+-            result |= to;
+-        }
+-    };
+-    translate(POLL_IN, Network::POLL_IN);
+-    translate(POLL_PRI, Network::POLL_PRI);
+-    translate(POLL_OUT, Network::POLL_OUT);
+-    translate(POLL_ERR, Network::POLL_ERR);
+-    translate(POLL_HUP, Network::POLL_HUP);
+-    translate(POLL_NVAL, Network::POLL_NVAL);
+-
+-    UNIMPLEMENTED_IF_MSG(flags != 0, "Unimplemented flags={}", flags);
+-    return result;
+-}
+-
+-u16 TranslatePollEventsToGuest(u16 flags) {
+-    u16 result = 0;
+-    const auto translate = [&result, &flags](u16 from, u16 to) {
+-        if ((flags & from) != 0) {
+-            flags &= ~from;
+-            result |= to;
+-        }
+-    };
+-
+-    translate(Network::POLL_IN, POLL_IN);
+-    translate(Network::POLL_PRI, POLL_PRI);
+-    translate(Network::POLL_OUT, POLL_OUT);
+-    translate(Network::POLL_ERR, POLL_ERR);
+-    translate(Network::POLL_HUP, POLL_HUP);
+-    translate(Network::POLL_NVAL, POLL_NVAL);
+-
+-    UNIMPLEMENTED_IF_MSG(flags != 0, "Unimplemented flags={}", flags);
+-    return result;
+-}
+-
+-Network::SockAddrIn Translate(SockAddrIn value) {
+-    ASSERT(value.len == 0 || value.len == sizeof(value));
+-
+-    Network::SockAddrIn result;
+-    result.family = Translate(static_cast<Domain>(value.family));
+-    result.ip = value.ip;
+-    result.portno = value.portno >> 8 | value.portno << 8;
+-    return result;
+-}
+-
+-SockAddrIn Translate(Network::SockAddrIn value) {
+-    SockAddrIn result;
+-    result.len = sizeof(result);
+-    result.family = static_cast<u8>(Translate(value.family));
+-    result.portno = value.portno >> 8 | value.portno << 8;
+-    result.ip = value.ip;
+-    result.zeroes = {};
+-    return result;
+-}
+-
+-Network::ShutdownHow Translate(ShutdownHow how) {
+-    switch (how) {
+-    case ShutdownHow::RD:
+-        return Network::ShutdownHow::RD;
+-    case ShutdownHow::WR:
+-        return Network::ShutdownHow::WR;
+-    case ShutdownHow::RDWR:
+-        return Network::ShutdownHow::RDWR;
+-    default:
+-        UNIMPLEMENTED_MSG("Unimplemented how={}", static_cast<int>(how));
+-        return {};
+-    }
+-}
+-
+-} // namespace Service::Sockets
+diff --git a/src/core/hle/service/sockets/sockets_translate.h b/src/core/hle/service/sockets/sockets_translate.h
+deleted file mode 100644
+index 8ed041e31..000000000
+--- a/src/core/hle/service/sockets/sockets_translate.h
++++ /dev/null
+@@ -1,48 +0,0 @@
+-// Copyright 2020 yuzu emulator team
+-// Licensed under GPLv2 or any later version
+-// Refer to the license.txt file included.
+-
+-#pragma once
+-
+-#include <utility>
+-
+-#include "common/common_types.h"
+-#include "core/hle/service/sockets/sockets.h"
+-#include "core/network/network.h"
+-
+-namespace Service::Sockets {
+-
+-/// Translate abstract errno to guest errno
+-Errno Translate(Network::Errno value);
+-
+-/// Translate abstract return value errno pair to guest return value errno pair
+-std::pair<s32, Errno> Translate(std::pair<s32, Network::Errno> value);
+-
+-/// Translate guest domain to abstract domain
+-Network::Domain Translate(Domain domain);
+-
+-/// Translate abstract domain to guest domain
+-Domain Translate(Network::Domain domain);
+-
+-/// Translate guest type to abstract type
+-Network::Type Translate(Type type);
+-
+-/// Translate guest protocol to abstract protocol
+-Network::Protocol Translate(Type type, Protocol protocol);
+-
+-/// Translate abstract poll event flags to guest poll event flags
+-u16 TranslatePollEventsToHost(u16 flags);
+-
+-/// Translate guest poll event flags to abstract poll event flags
+-u16 TranslatePollEventsToGuest(u16 flags);
+-
+-/// Translate guest socket address structure to abstract socket address structure
+-Network::SockAddrIn Translate(SockAddrIn value);
+-
+-/// Translate abstract socket address structure to guest socket address structure
+-SockAddrIn Translate(Network::SockAddrIn value);
+-
+-/// Translate guest shutdown mode to abstract shutdown mode
+-Network::ShutdownHow Translate(ShutdownHow how);
+-
+-} // namespace Service::Sockets
